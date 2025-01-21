@@ -1,3 +1,4 @@
+# https://stackoverflow.com/a/2022629/1614089
 class Event(list):
     """Event subscription.
 
