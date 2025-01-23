@@ -77,7 +77,15 @@ class Square():
 
 class Board(Protocol):
     def get_square(position: str) -> Square:
-        ... 
+        ...
+
+    @property
+    def en_passant() -> str | None:
+        ...
+    
+    @en_passant.setter
+    def en_passant(en_passant_square_str: str | None) -> None:
+        ...
 
 
 # @dataclass
@@ -127,17 +135,17 @@ class Pawn(Piece):
         potential_moves = [square.add(rows=1 * self.direction, cols=0)]
         if self.row == self.starting_row:
             potential_moves.append(square.add(rows=2 * self.direction, cols=0))
-        previous_move_square = None
+        # previous_move_square = None
         for move_square_str in potential_moves:
             move_square = self._board.get_square(move_square_str)
             move_square.indicate_can_move_to(self._piece_str, can_capture=False, can_promote=self.pre_promotion)
             move_square.changed += (self._square_changed, )
             if move_square.piece_str is None:
                 self.add_move(move_square_str)
-                if previous_move_square is None:
-                    previous_move_square = move_square
-                else:
-                    self._indicate_en_passant(previous_move_square)
+                # if previous_move_square is None:
+                #     previous_move_square = move_square
+                # else:
+                #     self._indicate_en_passant(previous_move_square)
             else:
                 break
         potential_captures = []
@@ -150,16 +158,15 @@ class Pawn(Piece):
             capture_square.indicate_can_move_to(self._piece_str, can_capture=True, can_promote=self.pre_promotion)
             capture_square.changed += (self._square_changed, )
             if capture_square.piece_str is None:
-                pass
+                if self._board.en_passant == capture_square_str:
+                    self.add_move(capture_square_str) # en-passant
+                # otherwise this move is not relevant at the moment
             elif not self.same_color(capture_square.piece_str):
                 self.add_move(capture_square_str)
-            else:
-                pass
-            # TODO: en-passant
         square.changed += (self._square_changed, )
 
-    def _indicate_en_passant(self, square: Square):
-        square.changed += (self._square_changed, ) # ?
+    # def _indicate_en_passant(self, square: Square):
+    #     square.changed += (self._square_changed, ) # ?
 
     def _square_changed(self, square: Square):
         print(f'{self._piece_str} _square_changed {square}')
@@ -285,16 +292,22 @@ class King(Piece):
             if target_square_str is None:
                 continue
             target_square = self._board.get_square(target_square_str)
-            target_square.indicate_can_move_to(self._piece_str) # TODO: only if not being thretened
-            if target_square.piece_str is None:
-                self.add_move(target_square_str)
-            else:
-                if not self.same_color(target_square.piece_str):
-                    self.add_move(target_square_str) # capture
+            if (
+                (self._piece_str == W_K and target_square.black_can_capture < 1)
+                or
+                (self._piece_str == B_K and target_square.white_can_capture < 1)
+            ):
+                target_square.indicate_can_move_to(self._piece_str)
+                if target_square.piece_str is None:
+                    self.add_move(target_square_str)
+                else:
+                    if not self.same_color(target_square.piece_str):
+                        self.add_move(target_square_str) # capture
             #TODO: events
 
 
-default_fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
+# default_fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
+default_fen = 'rnbqkbnr/ppp1pppp/8/8/3pP3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1'
 
 
 class Game():
@@ -307,9 +320,31 @@ class Game():
         self.pieces = []
         self.turn = None
         self.castling_rights = None
-        self.en_passant = None
+        self._en_passant = None
         self.half_moves = None
         self.move_number = None
+
+    @property
+    def en_passant(self) -> str:
+        return self._en_passant
+    
+    @en_passant.setter
+    def en_passant(self, en_passant_square_str: str) -> None:
+        self._en_passant=en_passant_square_str
+
+    @property
+    def is_check(self) -> bool:
+        king_str = W_K if self.turn == 'w' else B_K
+        king = next(piece for piece in self.pieces if piece._piece_str == king_str)
+        return (
+            (
+                self.turn == 'w' and self.get_square(king._position).black_can_capture > 0
+            )
+            or
+            (
+                self.turn == 'b' and self.get_square(king._position).white_can_capture > 0
+            )
+        )
 
     @staticmethod
     def from_fen(fen: str = default_fen) -> 'Game':
@@ -365,7 +400,7 @@ class Game():
 
     def display(self) -> None:
         print()
-        self._display_board(lambda square: square.piece_str or '.')
+        self._display_board(lambda square: square.piece_str or ('*' if square.position == self.en_passant else '.'))
         print()
 
         print(f'turn={self.turn}')
@@ -450,7 +485,10 @@ def main():
     game.display()
 
     for piece in game.pieces:
-        print(f'{piece=}, moves={list(piece.moves())}')
+        print(f'{piece}, moves={list(piece.moves())}')
+    print()
+
+    print(f'is_check={game.is_check}')
 
 
 if __name__ == "__main__":
