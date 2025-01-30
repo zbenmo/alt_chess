@@ -16,6 +16,9 @@ COLS = 'abcdefgh'
 # B_EN_PASSANT = 'e'
 
 
+DEBUG_PIECES = [] # B_K]
+
+
 @dataclass
 class Square():
     "helper class to manage a single square on the board"
@@ -169,17 +172,18 @@ class Piece(ABC):
 
         self._piece_evaluation.want_to_watch_squares = list(current_want_to_watch_squares)
 
-
-
     @abstractmethod
     def evaluate_disregarding_king_threats(self) -> PieceEvaluation:
         pass
 
-    def prepare_available_moves(self):
+    def prepare_available_moves(self) -> list:
         moves = []
         my_king = W_K if self.same_color(W_K) else B_K
+        self.evaluate()
+        if self._piece_str in DEBUG_PIECES:
+            print(f'prepare_available_moves: {self}, _piece_evaluation={self._piece_evaluation}')
         for target_square_str in self._piece_evaluation.potential_moves:
-            self._board.take_move(self._position, target_square_str) # TODO: move interesting moves....
+            self._board.take_move(self._position, target_square_str) # TODO: more interesting moves....
             if self._board.count_checks(my_king) < 1:
                 moves.append(target_square_str)
             self._board.undo()
@@ -387,6 +391,8 @@ class King(Piece):
                 ((position := square.add(add_rows, add_cols)) is not None)
             )
         ]
+        if self._piece_str in DEBUG_PIECES:
+            print(f'{self}, _theoretical_moves={self._theoretical_moves}')
 
     def evaluate_disregarding_king_threats(self) -> PieceEvaluation:
         piece_evaluation = PieceEvaluation()
@@ -395,10 +401,13 @@ class King(Piece):
             piece_evaluation.control_squares.append(target_square_str)
             target_square = self._board.get_square(target_square_str)
             if target_square.piece_str is None:
-                piece_evaluation.potential_moves.append(target_square_str)
+                piece_evaluation.potential_moves.append(target_square_str) # move to empty
+            elif not self.same_color(target_square.piece_str):
+                piece_evaluation.potential_moves.append(target_square_str) # capture
             else:
-                if not self.same_color(target_square.piece_str):
-                    piece_evaluation.potential_moves.append(target_square_str) # capture
+                pass
+        if self._piece_str in DEBUG_PIECES:
+            print(f'evaluate_disregarding_king_threats: {self}, piece_evaluation={piece_evaluation}')
         return piece_evaluation
 
 
@@ -517,6 +526,9 @@ class Game():
                 print(display_what(square), end='')
             print()
 
+    def _display_board_simple(self) -> None:
+        self._display_board(lambda square: square.piece_str or ('*' if square.position == self.en_passant else '.'))
+
     def display(self) -> None:
         print()
         self._display_board(lambda square: square.piece_str or ('*' if square.position == self.en_passant else '.'))
@@ -580,10 +592,11 @@ class Game():
                 assert False, f'{piece_str=}'
 
     def place(self, position: str, piece_str: str):
-        piece = Game.piece_for(piece_str=piece_str, position=position, board=self)
-        self.pieces[position] = piece
         square = self.get_square(position)
         square.piece_str = piece_str
+        piece = Game.piece_for(piece_str=piece_str, position=position, board=self)
+        self.pieces[position] = piece
+        piece.evaluate()
 
     def pick(self, position: str) -> str | None:
         square = self.get_square(position)
@@ -601,44 +614,31 @@ class Game():
     def take_move(self, source_sqaure_str: str, target_square_str: str) -> None:
         move = []
 
-        piece = self.pieces.pop(source_sqaure_str, None)
-        assert piece, f'{source_sqaure_str=}'
-        source_square = self.get_square(source_sqaure_str)
-        piece_in_source = source_square.pick()
-        assert piece_in_source == piece._piece_str, f'{piece_in_source=}, {piece._piece_str=}'
+        piece_str = self.pick(source_sqaure_str)
+        assert piece_str, f'{source_sqaure_str=}'
 
-        move.append((piece, source_sqaure_str))
+        target_piece_str = self.pick(target_square_str)
 
-        piece.detach()
+        self.place(target_square_str, piece_str)
 
-        target_sqaure = self.get_square(target_square_str)
-        piece_in_target = self.pieces.pop(target_square_str, None)
-        picked = target_sqaure.pick()
-        assert (piece_in_target == None) or piece_in_target._piece_str == picked, f'{piece_in_target=}, {picked=}'
-        move.append((piece_in_target, target_square_str))
-        if piece_in_target:
-            piece_in_target.detach()
-        self.place(position=target_square_str, piece_str=piece_in_source)
+        move = [(piece_str, source_sqaure_str), (target_piece_str, target_square_str)]
         self._undo_stack.append(move)
 
     def undo(self) -> None:
         if len(self._undo_stack) < 1:
             return
         move = self._undo_stack.pop() # last
-        for piece, position in reversed(move):
+        for piece_str, position in reversed(move):
 
             # piece_old = self.pieces.pop(position, None)
             # if piece_old:
             #     piece_old.detach()
             #     del piece_old
 
-            if piece:
-                self.pieces[position] = piece
-                square = self.get_square(position)
-                square.piece_str = piece._piece_str
+            if piece_str:
+                self.place(piece_str=piece_str, position=position) # -> event
             else:
-                # picked = self.pick(position)
-                pass
+                picked = self.pick(position)
 
 
 def main():
