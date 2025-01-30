@@ -110,7 +110,7 @@ class Board(Protocol):
     def count_checks(self, which_king: str) -> int:
         ...
 
-    def take_move(self, source_sqaure_str: str, target_square_str: str) -> None:
+    def take_move(self, source_sqaure_str: str, target_square_str: str, promotion: str=None) -> None:
         ...
 
     def undo(self) -> None:
@@ -176,7 +176,7 @@ class Piece(ABC):
     def evaluate_disregarding_king_threats(self) -> PieceEvaluation:
         pass
 
-    def prepare_available_moves(self) -> list:
+    def prepare_available_moves(self) -> List[str]:
         moves = []
         my_king = W_K if self.same_color(W_K) else B_K
         self.evaluate()
@@ -185,7 +185,7 @@ class Piece(ABC):
         for target_square_str in self._piece_evaluation.potential_moves:
             self._board.take_move(self._position, target_square_str) # TODO: more interesting moves....
             if self._board.count_checks(my_king) < 1:
-                moves.append(target_square_str)
+                moves.append(f'{self._position}{target_square_str}')
             self._board.undo()
         return moves
 
@@ -256,15 +256,21 @@ class Pawn(Piece):
                 piece_evaluation.potential_moves.append(capture_square_str) # capture # TODO: promotion
         return piece_evaluation
 
-    # def moves(self) -> Generator[str, None, None]:
-    #     if self.pre_promotion:
-    #         promotions = [W_Q, W_R, W_B, W_N] if self._piece_str == W_P else [B_Q, B_R, B_B, B_N]
-    #         for move, promotion in product(self._moves, promotions):
-    #             yield f'{self._position}{move}{promotion}'
-    #     else:
-    #         yield from [
-    #             f'{self._position}{move}' for move in self._moves
-    #         ]
+    def prepare_available_moves(self) -> List[str]:
+        if not self.pre_promotion:
+            return super().prepare_available_moves()
+        moves = []
+        my_king = W_K if self.same_color(W_K) else B_K
+        self.evaluate()
+        promotions = [W_Q, W_R, W_B, W_N] if self._piece_str == W_P else [B_Q, B_R, B_B, B_N]
+        if self._piece_str in DEBUG_PIECES:
+            print(f'prepare_available_moves: {self}, _piece_evaluation={self._piece_evaluation}')
+        for target_square_str, promotion in product(self._piece_evaluation.potential_moves, promotions):
+            self._board.take_move(self._position, target_square_str, promotion=promotion) # TODO: more interesting moves....
+            if self._board.count_checks(my_king) < 1:
+                moves.append(f'{self._position}{target_square_str}{promotion}')
+            self._board.undo()
+        return moves
 
 
 class Knight(Piece):
@@ -412,7 +418,8 @@ class King(Piece):
 
 
 # default_fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
-default_fen = 'rnbqkbnr/ppp1pppp/8/8/3pP3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1'
+# default_fen = 'rnbqkbnr/ppp1pppp/8/8/3pP3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1'
+default_fen = 'rnbqkbnr/ppppppPp/8/8/8/8/PPPPP1PP/RNBQKBNR w KQkq - 0 1'
 
 
 class Game():
@@ -611,7 +618,7 @@ class Game():
     def get_square(self, position: str) -> Square:
         return self.board[position]
 
-    def take_move(self, source_sqaure_str: str, target_square_str: str) -> None:
+    def take_move(self, source_sqaure_str: str, target_square_str: str, promotion: str=None) -> None:
         move = []
 
         piece_str = self.pick(source_sqaure_str)
@@ -619,7 +626,9 @@ class Game():
 
         target_piece_str = self.pick(target_square_str)
 
-        self.place(target_square_str, piece_str)
+        to_place_piece_str = promotion if promotion else piece_str
+
+        self.place(target_square_str, to_place_piece_str)
 
         move = [(piece_str, source_sqaure_str), (target_piece_str, target_square_str)]
         self._undo_stack.append(move)
