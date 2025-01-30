@@ -141,25 +141,26 @@ class Piece(ABC):
         previous_potential_moves = set(self._piece_evaluation.potential_moves)
         current_potential_moves = set(piece_evaluation.potential_moves)
 
-        for potential_move in current_potential_moves - previous_potential_moves:
-            target_square = self._board.get_square(potential_move) 
-            target_square.indicate_can_move_to(self._piece_str)
-        for potential_move in previous_potential_moves - current_potential_moves:
-            target_square = self._board.get_square(potential_move) 
-            target_square.indicate_can_move_to(self._piece_str, sign=-1) # TODO: !!!
-
-        self._piece_evaluation.potential_moves = list(current_potential_moves)
-
         previous_control_squares = set(self._piece_evaluation.control_squares)
         current_control_squares = set(piece_evaluation.control_squares)
 
-        for control_square in current_control_squares - previous_control_squares: # TODO:
-            target_square = self._board.get_square(control_square)  # TODO:
-            target_square.indicate_can_move_to(self._piece_str) # TODO:
-        for control_square in previous_control_squares - current_control_squares: # TODO:
-            target_square = self._board.get_square(control_square)  # TODO:
-            target_square.indicate_can_move_to(self._piece_str, sign=-1) # TODO: !!!
+        for potential_move in (
+            (current_potential_moves | current_control_squares)
+            -
+            (previous_potential_moves | previous_control_squares)
+        ):
+            target_square = self._board.get_square(potential_move) 
+            target_square.indicate_can_move_to(self._piece_str, can_capture=potential_move in current_control_squares)
 
+        for potential_move in (
+            (previous_potential_moves | previous_control_squares)
+            -
+            (current_potential_moves | current_control_squares)
+            ):
+            target_square = self._board.get_square(potential_move) 
+            target_square.indicate_can_move_to(self._piece_str, can_capture=potential_move in previous_control_squares, sign=-1)
+
+        self._piece_evaluation.potential_moves = list(current_potential_moves)
         self._piece_evaluation.control_squares = list(current_control_squares)
 
         previous_want_to_watch_squares = set(self._piece_evaluation.want_to_watch_squares)
@@ -241,19 +242,19 @@ class Pawn(Piece):
             piece_evaluation.want_to_watch_squares.append(move_square_str)
             move_square = self._board.get_square(move_square_str)
             if move_square.piece_str is None:
-                piece_evaluation.potential_moves.append(move_square_str) # TODO: promotion
+                piece_evaluation.potential_moves.append(move_square_str)
             else:
                 break
         for capture_square_str in self.potential_captures:
             piece_evaluation.want_to_watch_squares.append(capture_square_str)
             piece_evaluation.control_squares.append(capture_square_str)
-            capture_square = self._board.get_square(capture_square_str) # TODO: promotion
+            capture_square = self._board.get_square(capture_square_str)
             if capture_square.piece_str is None:
                 if self._board.en_passant == capture_square_str:
                     piece_evaluation.potential_moves.append(capture_square_str) # en-passant
                 # otherwise this move is not relevant at the moment
             elif not self.same_color(capture_square.piece_str):
-                piece_evaluation.potential_moves.append(capture_square_str) # capture # TODO: promotion
+                piece_evaluation.potential_moves.append(capture_square_str) # capture
         return piece_evaluation
 
     def prepare_available_moves(self) -> List[str]:
