@@ -116,9 +116,38 @@ class Board(Protocol):
     def undo(self) -> None:
         ...
 
-# @dataclass
-# class Move:
-#     target_square_str: str 
+    def place(self, position: str, piece_str: str):
+        ...
+
+    def pick(self, position: str) -> str | None:
+        ...
+
+
+@dataclass
+class Move:
+    pieces_to_remove: List[str] # positions
+    pieces_to_add: Dict[str, str] # position -> piece_str
+    _undo_pieces_to_remove: List[str] = field(init=False, default=None) # positions
+    _undo_pieces_to_add: List[str] = field(init=False, default=None) # position -> piece_str
+
+    def take(self, board: Board):
+        self._undo_pieces_to_remove = []
+        self._undo_pieces_to_add = []
+        for position in self.pieces_to_remove:
+            picked = board.pick(position)
+            self._undo_pieces_to_add[position] = picked
+        for position, piece_str in self.pieces_to_add.items():
+            board.place(position, piece_str)
+            self._undo_pieces_to_remove.append[position]
+
+    def undo(self, board: Board):
+        for position in self._undo_pieces_to_remove:
+            _ = board.pick(position)
+        for position, piece_str in self._undo_pieces_to_add.items():
+            board.place(position, piece_str)
+        self._undo_pieces_to_remove = None
+        self._undo_pieces_to_add = None
+
 
 @dataclass
 class PieceEvaluation:
@@ -206,7 +235,7 @@ class Piece(ABC):
     def _square_changed(self, square: Square):
         self.evaluate()
 
-    def detach(self) -> None:
+    def clean(self) -> None:
         for position in self._piece_evaluation.want_to_watch_squares:
             square = self._board.get_square(position)
             square.changed.remove(self._square_changed)
@@ -227,25 +256,25 @@ class Pawn(Piece):
         col, row = square.col, square.row
         self.pre_promotion = pre_promotion_row == row
         square = self._board.get_square(self._position)
-        self.potential_moves = [square.add(rows=1 * direction, cols=0)]
+        self._theoretical_moves = [square.add(rows=1 * direction, cols=0)]
         if row == starting_row:
-            self.potential_moves.append(square.add(rows=2 * direction, cols=0))
-        self.potential_captures = []
+            self._theoretical_moves.append(square.add(rows=2 * direction, cols=0))
+        self._theoretical_captures = []
         if col > COLS[0]:
-            self.potential_captures.append(square.add(rows=1 * direction, cols=-1))
+            self._theoretical_captures.append(square.add(rows=1 * direction, cols=-1))
         if col < COLS[-1]:
-            self.potential_captures.append(square.add(rows=1 * direction, cols=+1))
+            self._theoretical_captures.append(square.add(rows=1 * direction, cols=+1))
     
     def evaluate_disregarding_king_threats(self):
         piece_evaluation = PieceEvaluation()
-        for move_square_str in self.potential_moves:
+        for move_square_str in self._theoretical_moves:
             piece_evaluation.want_to_watch_squares.append(move_square_str)
             move_square = self._board.get_square(move_square_str)
             if move_square.piece_str is None:
                 piece_evaluation.potential_moves.append(move_square_str)
             else:
                 break
-        for capture_square_str in self.potential_captures:
+        for capture_square_str in self._theoretical_captures:
             piece_evaluation.want_to_watch_squares.append(capture_square_str)
             piece_evaluation.control_squares.append(capture_square_str)
             capture_square = self._board.get_square(capture_square_str)
@@ -267,7 +296,7 @@ class Pawn(Piece):
         if self._piece_str in DEBUG_PIECES:
             print(f'prepare_available_moves: {self}, _piece_evaluation={self._piece_evaluation}')
         for target_square_str, promotion in product(self._piece_evaluation.potential_moves, promotions):
-            self._board.take_move(self._position, target_square_str, promotion=promotion) # TODO: more interesting moves....
+            self._board.take_move(self._position, target_square_str, promotion=promotion)
             if self._board.count_checks(my_king) < 1:
                 moves.append(f'{self._position}{target_square_str}{promotion}')
             self._board.undo()
@@ -344,9 +373,27 @@ class Rook(RayBased, RookRays):
     def __init__(self, piece_str: str, position: str, board: Board):
         super().__init__(piece_str=piece_str, position=position, board=board)
         assert piece_str == W_R or piece_str == B_R
+        castling_rights = self._board.castling_rights
+        queen_side = ('Q' if piece_str == W_R else 'q') in castling_rights
+        king_side = ('K' if piece_str == W_R else 'k') in castling_rights
+        row, col = self._position.row, self._position.col
+        self._relevant_for_king_side_castling = (
+            king_side and (col == COLS[-1]) and (row == (ROWS[0] if piece_str == W_R else ROWS[-1]))
+        )
+        self._relevant_for_queen_side_castling = (
+            queen_side and (col == COLS[0]) and (row == (ROWS[0] if piece_str == W_R else ROWS[-1]))
+        )
 
     def get_rays(self) -> List[List[str]]:
         return self._get_rook_rays()
+
+    def clean(self) -> None:
+        super().clear()
+        # TODO: how to take back??????
+        if self._relevant_for_king_side_castling:
+            self._board.castling_rights.remove(('K' if self._piece_str == W_R else 'k'))
+        if self._relevant_for_queen_side_castling:
+            self._board.castling_rights.remove(('Q' if self._piece_str == W_R else 'q'))
 
 
 class BishopRays():
