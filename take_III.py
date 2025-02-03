@@ -19,7 +19,9 @@ PieceStr = str # ex. 'P'
 Move = str # ex. 'e2e4' (UCI)
 
 
-default_fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
+# default_fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
+# default_fen = 'rnbqkbnr/ppp1pppp/8/8/3pP3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1'
+default_fen = 'rnbqkbnr/ppppppPp/8/8/8/8/PPPPP1PP/RNBQKBNR w KQkq - 0 1'
 
 
 @dataclass
@@ -146,13 +148,14 @@ class Piece(ABC):
     def same_color(self, other_piece_str: PieceStr) -> bool:
         return self._piece_str.isupper() == other_piece_str.isupper()
 
-    def attempt_move(self, game: Game, move_square_str: Position) -> Tuple[Move, Game] | None:
+    def attempt_move(self, game: Game, move_square_str: Position, promotion: str = None) -> Tuple[Move, Game] | None:
         next_game_state = deepcopy(game)
         next_game_state.board[str(self._square)] = EMPTY
-        next_game_state.board[move_square_str] = self._piece_str
+        next_game_state.board[move_square_str] = promotion or self._piece_str
         if not next_game_state.valid():
             return None
-        return f'{self._square}{move_square_str}', next_game_state
+        move = f'{self._square}{move_square_str}{promotion}' if promotion else f'{self._square}{move_square_str}'
+        return move, next_game_state
 
 
 class Pawn(Piece):
@@ -160,29 +163,36 @@ class Pawn(Piece):
         super().__init__(piece_str=piece_str, position=position)
         assert piece_str == W_P or piece_str == B_P
         self._direction = +1 if self._piece_str == W_P else -1
-        starting_row = '2' if self._piece_str == W_P else '7'
-        pre_promotion_row = '7' if self._piece_str == W_P else '2'
-        col, row = self._square.col, self._square.row
-        self.pre_promotion = pre_promotion_row == row
+        starting_row = ROWS[1] if self._piece_str == W_P else ROWS[-2]
+        pre_promotion_row = ROWS[-2] if self._piece_str == W_P else ROWS[1]
+        self.pre_promotion = pre_promotion_row == self._square.row
         self._theoretical_moves = [self._square.add(rows=1 * self._direction, cols=0)]
-        if row == starting_row:
+        if self._square.row == starting_row:
             self._theoretical_moves.append(self._square.add(rows=2 * self._direction, cols=0))
-        self._theoretical_captures = []
-        if col > COLS[0]:
-            self._theoretical_captures.append(self._square.add(rows=1 * self._direction, cols=-1))
-        if col < COLS[-1]:
-            self._theoretical_captures.append(self._square.add(rows=1 * self._direction, cols=+1))
+        self._theoretical_captures = [
+            target_square_str
+            for target_square_str in map(lambda x: self._square.add(rows=1 * self._direction, cols=x), [-1, +1])
+            if target_square_str
+        ]
 
     def possible_moves(self, game: Game) -> Generator[Tuple[Move, Game],None,None]:
+        if self.pre_promotion:
+            promotions = [W_Q, W_R, W_B, W_N] if self._piece_str == W_P else [B_Q, B_R, B_B, B_N]
+            assert len(self._theoretical_moves) < 2 # ex. white can be on row 2 or on row 7, but not on both at the same time
+        else:
+            promotions = [None]
+
         two_steps = False
         for move_square_str in self._theoretical_moves:
             piece_there_str = game.board[move_square_str]
-            if piece_there_str == EMPTY:
-                ret = self.attempt_move(game, move_square_str)
+            if piece_there_str != EMPTY:
+                break
+            for promotion in promotions:
+                ret = self.attempt_move(game, move_square_str, promotion)
                 if not ret:
                     continue
                 move, next_game_state = ret
-                if self._piece_str == B_N:
+                if self._piece_str == B_P:
                     assert game.turn == 'b'
                     next_game_state.move_number += 1
                     next_game_state.turn = 'w'
@@ -192,9 +202,8 @@ class Pawn(Piece):
                 next_game_state.en_passant = self._square.add(1 * self._direction, 0) if two_steps else '-'
                 next_game_state.half_moves = 0
                 yield move, next_game_state
-                two_steps = True
-            else:
-                break
+            two_steps = True
+
         for capture_square_str in self._theoretical_captures:
             piece_there_str = game.board[capture_square_str]
             if piece_there_str == EMPTY:
@@ -202,22 +211,21 @@ class Pawn(Piece):
                     continue
             elif self.same_color(piece_there_str):
                 continue
-            ret = self.attempt_move(game, move_square_str)
-            if not ret:
-                continue
-            move, next_game_state = ret
-            if self._piece_str == B_P:
-                assert game.turn == 'b'
-                next_game_state.move_number += 1
-                next_game_state.turn = 'w'
-            else:
-                assert game.turn == 'w'
-                next_game_state.turn = 'b'
-            next_game_state.half_moves = 0
-            next_game_state.en_passant = '-'
-            yield move, next_game_state
-
-        # TODO: promotion
+            for promotion in promotions:
+                ret = self.attempt_move(game, capture_square_str, promotion)
+                if not ret:
+                    continue
+                move, next_game_state = ret
+                if self._piece_str == B_P:
+                    assert game.turn == 'b'
+                    next_game_state.move_number += 1
+                    next_game_state.turn = 'w'
+                else:
+                    assert game.turn == 'w'
+                    next_game_state.turn = 'b'
+                next_game_state.half_moves = 0
+                next_game_state.en_passant = '-'
+                yield move, next_game_state
 
 
 class Knight(Piece):
@@ -372,16 +380,14 @@ class King(Piece):
             if self._piece_str == B_K:
                 assert game.turn == 'b'
                 next_game_state.move_number += 1
-                next_game_state.castling_rights = next_game_state.castling_rights.replace('k', '')
-                next_game_state.castling_rights = next_game_state.castling_rights.replace('q', '')
+                next_game_state.castling_rights = next_game_state.castling_rights.replace('k', '').replace('q', '')
                 next_game_state.turn = 'w'
             else:
                 assert game.turn == 'w'
-                next_game_state.castling_rights = next_game_state.castling_rights.replace('K', '')
-                next_game_state.castling_rights = next_game_state.castling_rights.replace('Q', '')
+                next_game_state.castling_rights = next_game_state.castling_rights.replace('K', '').replace('Q', '')
                 next_game_state.turn = 'b'
             if next_game_state.castling_rights == '':
-                next_game_state.castling_rights = '-' 
+                next_game_state.castling_rights = '-'
             next_game_state.half_moves = 0 if capture else next_game_state.half_moves + 1
             next_game_state.en_passant = '-'
             yield move, next_game_state
