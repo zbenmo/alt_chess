@@ -19,9 +19,9 @@ PieceStr = str # ex. 'P'
 Move = str # ex. 'e2e4' (UCI)
 
 
-# default_fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
+default_fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
 # default_fen = 'rnbqkbnr/ppp1pppp/8/8/3pP3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1'
-default_fen = 'rnbqkbnr/ppppppPp/8/8/8/8/PPPPP1PP/RNBQKBNR w KQkq - 0 1'
+# default_fen = 'rnbqkbnr/ppppppPp/8/8/8/8/PPPPP1PP/RNBQKBNR w KQkq - 0 1'
 
 
 @dataclass
@@ -157,6 +157,22 @@ class Piece(ABC):
         move = f'{self._square}{move_square_str}{promotion}' if promotion else f'{self._square}{move_square_str}'
         return move, next_game_state
 
+    def update_castling_rights(self, next_game_state: Game):
+        """Just examines the board and updates the castling_rights.
+        The logic ignores what just happened, as well as the previous casting_rights state.
+        It (the logic) may be somewhat "wasteful", yet is straight-forward and is useful from various places in the code below. 
+        """
+        if next_game_state.board['a1'] != W_R:
+            next_game_state.castling_rights = next_game_state.replace('Q', '')
+        if next_game_state.board['h1'] != W_R:
+            next_game_state.castling_rights = next_game_state.replace('K', '')
+        if next_game_state.board['a8'] != B_R:
+            next_game_state.castling_rights = next_game_state.replace('q', '')
+        if next_game_state.board['h8'] != B_R:
+            next_game_state.castling_rights = next_game_state.replace('k', '')
+        if next_game_state.castling_rights == '':
+            next_game_state.castling_rights = '-' 
+
 
 class Pawn(Piece):
     def __init__(self, piece_str: PieceStr, position: Position):
@@ -182,50 +198,57 @@ class Pawn(Piece):
         else:
             promotions = [None]
 
-        two_steps = False
-        for move_square_str in self._theoretical_moves:
-            piece_there_str = game.board[move_square_str]
-            if piece_there_str != EMPTY:
-                break
-            for promotion in promotions:
-                ret = self.attempt_move(game, move_square_str, promotion)
-                if not ret:
-                    continue
-                move, next_game_state = ret
-                if self._piece_str == B_P:
-                    assert game.turn == 'b'
-                    next_game_state.move_number += 1
-                    next_game_state.turn = 'w'
-                else:
-                    assert game.turn == 'w'
-                    next_game_state.turn = 'b'
-                next_game_state.en_passant = self._square.add(1 * self._direction, 0) if two_steps else '-'
-                next_game_state.half_moves = 0
-                yield move, next_game_state
-            two_steps = True
+        def _move() -> Generator[Tuple[Move, Game],None,None]:
+            two_steps = False
+            for move_square_str in self._theoretical_moves:
+                piece_there_str = game.board[move_square_str]
+                if piece_there_str != EMPTY:
+                    break
+                for promotion in promotions:
+                    ret = self.attempt_move(game, move_square_str, promotion)
+                    if not ret:
+                        continue
+                    move, next_game_state = ret
+                    if self._piece_str == B_P:
+                        assert game.turn == 'b'
+                        next_game_state.move_number += 1
+                        next_game_state.turn = 'w'
+                    else:
+                        assert game.turn == 'w'
+                        next_game_state.turn = 'b'
+                    next_game_state.en_passant = self._square.add(1 * self._direction, 0) if two_steps else '-'
+                    next_game_state.half_moves = 0
+                    yield move, next_game_state
+                two_steps = True
 
-        for capture_square_str in self._theoretical_captures:
-            piece_there_str = game.board[capture_square_str]
-            if piece_there_str == EMPTY:
-                if game.en_passant != capture_square_str:
+        yield from _move()
+
+        def _capture() -> Generator[Tuple[Move, Game],None,None]:
+            for capture_square_str in self._theoretical_captures:
+                piece_there_str = game.board[capture_square_str]
+                if piece_there_str == EMPTY:
+                    if game.en_passant != capture_square_str:
+                        continue
+                elif self.same_color(piece_there_str):
                     continue
-            elif self.same_color(piece_there_str):
-                continue
-            for promotion in promotions:
-                ret = self.attempt_move(game, capture_square_str, promotion)
-                if not ret:
-                    continue
-                move, next_game_state = ret
-                if self._piece_str == B_P:
-                    assert game.turn == 'b'
-                    next_game_state.move_number += 1
-                    next_game_state.turn = 'w'
-                else:
-                    assert game.turn == 'w'
-                    next_game_state.turn = 'b'
-                next_game_state.half_moves = 0
-                next_game_state.en_passant = '-'
-                yield move, next_game_state
+                for promotion in promotions:
+                    ret = self.attempt_move(game, capture_square_str, promotion)
+                    if not ret:
+                        continue
+                    move, next_game_state = ret
+                    if self._piece_str == B_P:
+                        assert game.turn == 'b'
+                        next_game_state.move_number += 1
+                        next_game_state.turn = 'w'
+                    else:
+                        assert game.turn == 'w'
+                        next_game_state.turn = 'b'
+                    next_game_state.half_moves = 0
+                    next_game_state.en_passant = '-'
+                    self.update_castling_rights(next_game_state)
+                    yield move, next_game_state
+
+        yield from _capture()
 
 
 class Knight(Piece):
@@ -252,13 +275,13 @@ class Knight(Piece):
             if self._piece_str == B_N:
                 assert game.turn == 'b'
                 next_game_state.move_number += 1
-                # next_game_state.castling_rights = next_game_state.castling_rights.remove('kq')
                 next_game_state.turn = 'w'
             else:
                 assert game.turn == 'w'
-                # next_game_state.castling_rights = next_game_state.castling_rights.remove('KQ')
                 next_game_state.turn = 'b'
             next_game_state.half_moves = 0 if capture else next_game_state.half_moves + 1
+            if capture:
+                self.update_castling_rights(next_game_state)
             next_game_state.en_passant = '-'
             yield move, next_game_state
 
@@ -281,7 +304,7 @@ class RayBased(Piece, ABC):
             for target_square_str in ray:
                 piece_there_str = game.board[target_square_str]
                 if piece_there_str != EMPTY and self.same_color(piece_there_str):
-                    break # this ray reached a piece
+                    break # this ray reached a piece of its own color
                 ret = self.attempt_move(game, target_square_str)
                 if not ret:
                     continue
@@ -290,19 +313,17 @@ class RayBased(Piece, ABC):
                 if self.same_color(B_K):
                     assert game.turn == 'b'
                     next_game_state.move_number += 1
-                    # next_game_state.castling_rights = next_game_state.castling_rights.replace('k', '')
-                    # next_game_state.castling_rights = next_game_state.castling_rights.replace('q', '')
                     next_game_state.turn = 'w'
                 else:
                     assert game.turn == 'w'
-                    # next_game_state.castling_rights = next_game_state.castling_rights.replace('K', '')
-                    # next_game_state.castling_rights = next_game_state.castling_rights.replace('Q', '')
                     next_game_state.turn = 'b'
-                # if next_game_state.castling_rights == '':
-                #     next_game_state.castling_rights = '-' 
                 next_game_state.half_moves = 0 if capture else next_game_state.half_moves + 1
+                if capture or self._piece_str in [W_R, B_R]:
+                    self.update_castling_rights(next_game_state)
                 next_game_state.en_passant = '-'
                 yield move, next_game_state
+                if capture:
+                    break # this ray reached a piece (a capture)
 
 
 class RookRays():
@@ -386,9 +407,13 @@ class King(Piece):
                 assert game.turn == 'w'
                 next_game_state.castling_rights = next_game_state.castling_rights.replace('K', '').replace('Q', '')
                 next_game_state.turn = 'b'
+
             if next_game_state.castling_rights == '':
                 next_game_state.castling_rights = '-'
+
             next_game_state.half_moves = 0 if capture else next_game_state.half_moves + 1
+            if capture:
+                self.update_castling_rights(next_game_state)
             next_game_state.en_passant = '-'
             yield move, next_game_state
 
