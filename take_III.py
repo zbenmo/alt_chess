@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from collections import Counter, defaultdict
 from copy import deepcopy
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -20,9 +21,9 @@ Move = str # ex. 'e2e4' (UCI)
 
 
 # default_fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
-# default_fen = 'rnbqkbnr/ppp1pppp/8/8/3pP3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1'
+default_fen = 'rnbqkbnr/ppp1pppp/8/8/3pP3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1'
 # default_fen = 'rnbqkbnr/ppppppPp/8/8/8/8/PPPPP1PP/RNBQKBNR w KQkq - 0 1'
-default_fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQK2R w KQkq - 0 1'
+# default_fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQK2R w KQkq - 0 1'
 
 
 @dataclass
@@ -93,12 +94,12 @@ class Game:
         print()
 
     def all_pieces(self, player: str) -> Generator[Tuple[PieceStr, Position], None, None]:
+        for_black: bool = player == 'b'
         for position, piece_str in self.board.items():
             if piece_str == EMPTY:
                 continue
-            if (piece_str.isupper() and player == 'b') or (piece_str.islower() and player == 'w'):
-                continue
-            yield piece_str, position
+            if piece_str.isupper() != for_black: # xor
+                yield piece_str, position
 
 
 @dataclass(repr=False)
@@ -255,7 +256,7 @@ class Pawn(Piece):
                 if piece_there_str == EMPTY:
                     if game.en_passant != capture_square_str:
                         continue
-                    extra_remove = Square(capture_square_str).add(rows=1 * self.direction)
+                    extra_remove = Square(capture_square_str).add(rows=1 * self._direction)
                 elif self.same_color(piece_there_str):
                     continue
                 for promotion in promotions:
@@ -372,10 +373,10 @@ class RookRays():
     "mixin"
     def _get_rook_rays(self) -> List[List[str]]:
         return [
-            [self._square.add(rows=0, cols=cols) for cols in range(1, 8)],
-            [self._square.add(rows=0, cols=cols) for cols in range(-1, -8, -1)],
-            [self._square.add(rows=rows, cols=0) for rows in range(1, 8)],
-            [self._square.add(rows=rows, cols=0) for rows in range(-1, -8, -1)],
+            [self._square.add(cols=cols) for cols in range(1, 8)],
+            [self._square.add(cols=cols) for cols in range(-1, -8, -1)],
+            [self._square.add(rows=rows) for rows in range(1, 8)],
+            [self._square.add(rows=rows) for rows in range(-1, -8, -1)],
         ]
 
 
@@ -426,7 +427,7 @@ class King(Piece):
             for add_rows, add_cols in product([-1, 0, 1], [-1, 0, 1]) if (
                 (add_rows != 0 or add_cols != 0)
                 and
-                ((position := self._square.add(add_rows, add_cols)) is not None)
+                ((position := self._square.add(rows=add_rows, cols=add_cols)) is not None)
             )
         ]
 
@@ -588,8 +589,52 @@ class GameEvaluation:
                 return True
         return False
 
+    @staticmethod
+    def evaluate(game: Game, print_to_screen: bool=False):
+        kings_positions = Counter()
+        threats_white = Counter()
+        threats_black = Counter()
+        promotions = Counter()
+        for position, piece_str in game.board.items():
+            if piece_str == EMPTY:
+                continue
+            if piece_str == W_K:
+                kings_positions[position] += 1
+            elif piece_str == B_K:
+                kings_positions[position] -= 1
+            if piece_str == W_P and position[1] == '7':
+                promotions[position] += 1
+            elif piece_str == B_P and position[1] == '1':
+                promotions[position] -= 1
+            piece = GameEvaluation.piece_for(piece_str, position)
+            if piece_str.isupper():
+                for threat_position in piece.positions_threats(game):
+                    threats_white[threat_position] += 1
+            else:
+                for threat_position in piece.positions_threats(game):
+                    threats_black[threat_position] += 1
+        if print_to_screen:
+            print()
+            print('threats white')
+            print()
+            game._display_board(lambda position: threats_white.get(position, '.'))
+            print()
+            print('threats black')
+            print()
+            game._display_board(lambda position: threats_black.get(position, '.'))
+            print()
+            print('kings positions')
+            print()
+            game._display_board(lambda position: kings_positions.get(position, '.'))
+            print()
+            print('promotions positions')
+            print()
+            game._display_board(lambda position: promotions.get(position, '.'))
+
 
 def main():
+    import timeit
+
     game = Game.from_fen()
 
     game.display()
@@ -600,6 +645,10 @@ def main():
         print()
         print(move)
         next_game_state.display()
+
+    GameEvaluation.evaluate(game, print_to_screen=True)
+
+    print(timeit.timeit(lambda: GameEvaluation.evaluate(game), number=10_000))
 
 
 if __name__ == "__main__":
