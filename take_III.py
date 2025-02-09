@@ -20,8 +20,8 @@ PieceStr = str # ex. 'P'
 Move = str # ex. 'e2e4' (UCI)
 
 
-# default_fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
-default_fen = 'rnbqkbnr/ppp1pppp/8/8/3pP3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1'
+default_fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
+# default_fen = 'rnbqkbnr/ppp1pppp/8/8/3pP3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1'
 # default_fen = 'rnbqkbnr/ppppppPp/8/8/8/8/PPPPP1PP/RNBQKBNR w KQkq - 0 1'
 # default_fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQK2R w KQkq - 0 1'
 
@@ -632,6 +632,18 @@ class GameEvaluation:
             game._display_board(lambda position: promotions.get(position, '.'))
 
 
+    def take_move(game: Game, move: str) -> Game | None:
+        from_position = move[:2]
+        piece_str = game.board[from_position]
+        assert piece_str != EMPTY
+        is_upper: bool = piece_str.isupper()
+        assert (game.turn == 'b') or is_upper, f'{game.turn=}, {piece_str=}'
+        piece = GameEvaluation.piece_for(piece_str, from_position)
+        for possible_move, next_game_state in piece.possible_moves(game, GameEvaluation.is_checked):
+            if possible_move == move:
+                return next_game_state
+
+
 def main():
     import timeit
 
@@ -648,7 +660,13 @@ def main():
 
     GameEvaluation.evaluate(game, print_to_screen=True)
 
-    print(timeit.timeit(lambda: GameEvaluation.evaluate(game), number=10_000))
+    # print(timeit.timeit(lambda: GameEvaluation.evaluate(game), number=10_000))
+
+    move = "e2e4"
+
+    next_game_state = GameEvaluation.take_move(game, move)
+
+    next_game_state.display()
 
 
 if __name__ == "__main__":
