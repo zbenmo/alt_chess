@@ -631,7 +631,6 @@ class GameEvaluation:
             print()
             game._display_board(lambda position: promotions.get(position, '.'))
 
-
     def take_move(game: Game, move: str) -> Game | None:
         from_position = move[:2]
         piece_str = game.board[from_position]
@@ -642,6 +641,24 @@ class GameEvaluation:
         for possible_move, next_game_state in piece.possible_moves(game, GameEvaluation.is_checked):
             if possible_move == move:
                 return next_game_state
+
+    def simple_heuristics(game: Game) -> Tuple[float, float]:
+        counter = Counter(game.board.values())
+        white = (
+            counter[W_P] * 1.0
+            + counter[W_B] * 3.0
+            + counter[W_N] * 3.0
+            + counter[W_R] * 5.0
+            + counter[W_Q] * 9.0
+        )
+        black = (
+            counter[B_P] * 1.0
+            + counter[B_B] * 3.0
+            + counter[B_N] * 3.0
+            + counter[B_R] * 5.0
+            + counter[B_Q] * 9.0
+        )
+        return white, black
 
 
 def main():
@@ -667,6 +684,8 @@ def main():
     next_game_state = GameEvaluation.take_move(game, move)
 
     next_game_state.display()
+
+    print(GameEvaluation.simple_heuristics(next_game_state))
 
 
 if __name__ == "__main__":
