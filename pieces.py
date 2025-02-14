@@ -102,15 +102,13 @@ class Piece(ABC):
         It (the logic) may be somewhat "wasteful", yet is straight-forward and is useful from various places in the code below. 
         """
         if next_game_state.board['a1'] != W_R:
-            next_game_state.castling_rights = next_game_state.castling_rights.replace('Q', '')
+            next_game_state.castling_rights.discard('Q')
         if next_game_state.board['h1'] != W_R:
-            next_game_state.castling_rights = next_game_state.castling_rights.replace('K', '')
+            next_game_state.castling_rights.discard('K')
         if next_game_state.board['a8'] != B_R:
-            next_game_state.castling_rights = next_game_state.castling_rights.replace('q', '')
+            next_game_state.castling_rights.discard('q')
         if next_game_state.board['h8'] != B_R:
-            next_game_state.castling_rights = next_game_state.castling_rights.replace('k', '')
-        if next_game_state.castling_rights == '':
-            next_game_state.castling_rights = '-' 
+            next_game_state.castling_rights.discard('k')
 
 
 class Pawn(Piece):
@@ -359,15 +357,12 @@ class King(Piece):
                 if self._piece_str == B_K:
                     assert game.turn == 'b'
                     next_game_state.move_number += 1
-                    next_game_state.castling_rights = next_game_state.castling_rights.replace('k', '').replace('q', '')
+                    next_game_state.castling_rights = next_game_state.castling_rights.difference(['k', 'q'])
                     next_game_state.turn = 'w'
                 else:
                     assert game.turn == 'w'
-                    next_game_state.castling_rights = next_game_state.castling_rights.replace('K', '').replace('Q', '')
+                    next_game_state.castling_rights = next_game_state.castling_rights.difference(['K', 'Q'])
                     next_game_state.turn = 'b'
-
-                if next_game_state.castling_rights == '':
-                    next_game_state.castling_rights = '-'
 
                 next_game_state.half_moves = 0 if capture else next_game_state.half_moves + 1
                 if capture:
@@ -378,8 +373,8 @@ class King(Piece):
         yield from _simple()
 
         def _castling() -> Generator[Tuple[Move, Game],None,None]:
-            relevant_rights = ['K', 'Q'] if self._piece_str == W_K else ['k', 'q']
-            relevant_rights = [right for right in relevant_rights if right in game.castling_rights]
+            relevant_rights = set(['K', 'Q']) if self._piece_str == W_K else set(['k', 'q'])
+            relevant_rights = relevant_rights.intersection(game.castling_rights)
             if len(relevant_rights) < 1:
                 return
             checked_for_check = False
@@ -443,11 +438,11 @@ class King(Piece):
                 if self._piece_str == B_K:
                     assert game.turn == 'b'
                     next_game_state.move_number += 1
-                    next_game_state.castling_rights = next_game_state.castling_rights.replace('k', '').replace('q', '')
+                    next_game_state.castling_rights = next_game_state.castling_rights.difference(['k', 'q'])
                     next_game_state.turn = 'w'
                 else:
                     assert game.turn == 'w'
-                    next_game_state.castling_rights = next_game_state.castling_rights.replace('K', '').replace('Q', '')
+                    next_game_state.castling_rights = next_game_state.castling_rights.difference(['K', 'Q'])
                     next_game_state.turn = 'b'
 
                 if next_game_state.castling_rights == '':

@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Callable, Dict, Generator, Tuple
+from typing import Callable, Dict, Generator, Set, Tuple
 
 
 W_P, W_R, W_N, W_B, W_Q, W_K = "PRNBQK"
@@ -25,7 +25,7 @@ default_fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
 class Game:
     board: Dict[Position, PieceStr]
     turn: str
-    castling_rights: str
+    castling_rights: Set[str]
     en_passant: str
     half_moves: int
     move_number: int
@@ -55,6 +55,9 @@ class Game:
             for row_n, row in zip(reversed(ROWS), positions.split('/'))
             for col_n, piece_str in zip(COLS, _split_and_expand(row))
         }
+
+        castling_rights = set(castling_rights)
+        castling_rights.discard('-')
 
         return Game(
             board=board,
