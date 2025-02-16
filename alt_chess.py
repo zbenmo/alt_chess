@@ -124,10 +124,15 @@ class GameEvaluation:
         return white, black
 
 
+# default_fen = 'rnbqkbnr/ppp1pppp/8/8/3pP3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1'
+# default_fen = 'rnbqkbnr/ppppppPp/8/8/8/8/PPPPP1PP/RNBQKBNR w KQkq - 0 1'
+# default_fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQK2R w KQkq - 0 1'
+
+
 def main():
     import timeit
 
-    game = Game.from_fen()
+    game = Game.from_fen() # pass a fen..
 
     game.display()
 

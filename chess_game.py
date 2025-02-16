@@ -16,9 +16,6 @@ Move = str # ex. 'e2e4' (UCI)
 
 
 default_fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
-# default_fen = 'rnbqkbnr/ppp1pppp/8/8/3pP3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1'
-# default_fen = 'rnbqkbnr/ppppppPp/8/8/8/8/PPPPP1PP/RNBQKBNR w KQkq - 0 1'
-# default_fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQK2R w KQkq - 0 1'
 
 
 @dataclass
@@ -74,7 +71,7 @@ class Game:
             pieces = []
             count_empty = 0
             for piece in line:
-                if piece != ' ':
+                if piece != EMPTY:
                     if count_empty > 0:
                         pieces.append(str(count_empty))
                         count_empty = 0
@@ -124,30 +121,9 @@ class Game:
                 yield piece_str, position
 
 def main():
-    import timeit
-
     game = Game.from_fen()
 
     game.display()
-
-    # possible_moves = dict(GameEvaluation.possible_moves(game))
-
-    # for move, next_game_state in possible_moves.items():
-    #     print()
-    #     print(move)
-    #     next_game_state.display()
-
-    # GameEvaluation.evaluate(game, print_to_screen=True)
-
-    # # print(timeit.timeit(lambda: GameEvaluation.evaluate(game), number=10_000))
-
-    # move = "e2e4"
-
-    # next_game_state = GameEvaluation.take_move(game, move)
-
-    # next_game_state.display()
-
-    # print(GameEvaluation.simple_heuristics(next_game_state))
 
     print(game.to_fen())
 
