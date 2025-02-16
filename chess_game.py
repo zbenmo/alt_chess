@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Callable, Dict, Generator, Set, Tuple
+from typing import Callable, Dict, Generator, List, Set, Tuple
 
 
 W_P, W_R, W_N, W_B, W_Q, W_K = "PRNBQK"
@@ -68,6 +68,30 @@ class Game:
             move_number=int(move_number)
         )
 
+    def to_fen(self) -> str:
+
+        def compress_and_join(line: List[str]) -> str:
+            pieces = []
+            count_empty = 0
+            for piece in line:
+                if piece != ' ':
+                    if count_empty > 0:
+                        pieces.append(str(count_empty))
+                        count_empty = 0
+                    pieces.append(piece)
+                else:
+                    count_empty += 1
+            if count_empty > 0:
+                pieces.append(str(count_empty))
+            return ''.join(pieces)
+
+        position = '/'.join(
+            compress_and_join([self.board[f'{col}{row}'] for col in COLS])
+            for row in reversed(ROWS)
+        )
+        castling_rights = '-' if len(self.castling_rights) < 1 else ''.join(right for right in 'KQkq' if right in self.castling_rights)
+        return f'{position} {self.turn} {castling_rights} {self.en_passant} {self.half_moves} {self.move_number}'
+
     def _display_board(self, display_what: Callable[[Position], str]) -> None:
         for row in reversed(ROWS):
             for col in COLS:
@@ -98,3 +122,35 @@ class Game:
                 continue
             if piece_str.isupper() != for_black: # xor
                 yield piece_str, position
+
+def main():
+    import timeit
+
+    game = Game.from_fen()
+
+    game.display()
+
+    # possible_moves = dict(GameEvaluation.possible_moves(game))
+
+    # for move, next_game_state in possible_moves.items():
+    #     print()
+    #     print(move)
+    #     next_game_state.display()
+
+    # GameEvaluation.evaluate(game, print_to_screen=True)
+
+    # # print(timeit.timeit(lambda: GameEvaluation.evaluate(game), number=10_000))
+
+    # move = "e2e4"
+
+    # next_game_state = GameEvaluation.take_move(game, move)
+
+    # next_game_state.display()
+
+    # print(GameEvaluation.simple_heuristics(next_game_state))
+
+    print(game.to_fen())
+
+
+if __name__ == "__main__":
+    main()
