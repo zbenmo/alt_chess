@@ -167,7 +167,7 @@ class Pawn(Piece):
                 if piece_there_str == EMPTY:
                     if game.en_passant != capture_square_str:
                         continue
-                    extra_remove = Square(capture_square_str).add(rows=1 * self._direction)
+                    extra_remove = Square(capture_square_str).add(rows=-1 * self._direction)
                 elif self.same_color(piece_there_str):
                     continue
                 for promotion in promotions:
